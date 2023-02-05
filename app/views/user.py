@@ -6,9 +6,31 @@ from app import app, logger, telegram, xray
 from app.db import Session, crud, get_db
 from app.models.admin import Admin
 from app.models.proxy import ProxyTypes
-from app.models.user import UserCreate, UserModify, UserResponse, UserStatus
+from app.models.user import User, UserCreate, UserModify, UserResponse, UserStatus
 from app.xray import INBOUNDS
 from fastapi import BackgroundTasks, Depends, HTTPException
+
+
+def xray_add_user(user: User):
+    for proxy_type in user.proxies:
+        account = user.get_account(proxy_type)
+        for inbound in INBOUNDS.get(proxy_type, []):
+            if not inbound['tag'] in user.inbounds.get(proxy_type, []):
+                continue
+
+            try:
+                xray.api.add_inbound_user(tag=inbound['tag'], user=account)
+            except xray.exc.EmailExistsError:
+                pass
+
+
+def xray_remove_user(user: User):
+    for proxy_type in ProxyTypes:
+        for inbound in INBOUNDS.get(proxy_type, []):
+            try:
+                xray.api.remove_inbound_user(tag=inbound['tag'], email=user.username)
+            except xray.exc.EmailNotFoundError:
+                pass
 
 
 @app.post("/api/user", tags=['User'], response_model=UserResponse)
@@ -22,7 +44,8 @@ def add_user(new_user: UserCreate,
     - **username** must have 3 to 32 characters and is allowed to contain a-z, 0-9, and underscores in between
     - **expire** must be an UTC timestamp
     - **data_limit** must be in Bytes, e.g. 1073741824B = 1GB
-    - **proxies** a dictionary of proxies, supported proxies: vmess, vless, trojan or shadowsocks
+    - **proxies** dictionary of protocol:settings
+    - **inbounds** dictionary of protocol:inbound_tags, empty means all inbounds
     """
     # TODO expire should be datetime instead of timestamp
 
@@ -40,13 +63,7 @@ def add_user(new_user: UserCreate,
     except sqlalchemy.exc.IntegrityError:
         raise HTTPException(status_code=409, detail="User already exists")
 
-    for proxy_type in new_user.proxies:
-        account = new_user.get_account(proxy_type)
-        for inbound in INBOUNDS.get(proxy_type, []):
-            try:
-                xray.api.add_inbound_user(tag=inbound['tag'], user=account)
-            except xray.exc.EmailExistsError:
-                pass
+    xray_add_user(new_user)
 
     bg.add_task(
         telegram.report_new_user,
@@ -57,7 +74,7 @@ def add_user(new_user: UserCreate,
     return dbuser
 
 
-@ app.get("/api/user/{username}", tags=['User'], response_model=UserResponse)
+@app.get("/api/user/{username}", tags=['User'], response_model=UserResponse)
 def get_user(username: str,
              db: Session = Depends(get_db),
              admin: Admin = Depends(Admin.get_current)):
@@ -74,7 +91,7 @@ def get_user(username: str,
     return dbuser
 
 
-@ app.put("/api/user/{username}", tags=['User'], response_model=UserResponse)
+@app.put("/api/user/{username}", tags=['User'], response_model=UserResponse)
 def modify_user(username: str,
                 modified_user: UserModify,
                 bg: BackgroundTasks,
@@ -83,9 +100,10 @@ def modify_user(username: str,
     """
     Modify a user
 
-    - set **expire** to 0 to make the user unlimited in time
-    - set **data_limit** to 0 to make the user unlimited in data
-    - **proxies** a dictionary of proxies, supported proxies: vmess, vless, trojan or shadowsocks
+    - set **expire** to 0 to make the user unlimited in time, null to no change
+    - set **data_limit** to 0 to make the user unlimited in data, null to no change
+    - **proxies** dictionary of protocol:settings, empty means no change
+    - **inbounds** dictionary of protocol:inbound_tags, empty means no change
     """
 
     try:
@@ -132,15 +150,9 @@ def modify_user(username: str,
 
     user = UserResponse.from_orm(dbuser)
 
-    for proxy_type in ProxyTypes:
-        for inbound in INBOUNDS.get(proxy_type, []):
-            try:
-                xray.api.remove_inbound_user(tag=inbound['tag'], email=user.username)
-            except xray.exc.EmailNotFoundError:
-                pass
-            if proxy_type in user.proxies and user.status == UserStatus.active:
-                account = user.get_account(proxy_type)
-                xray.api.add_inbound_user(tag=inbound['tag'], user=account)
+    xray_remove_user(user)
+    if user.status == UserStatus.active:
+        xray_add_user(user)
 
     bg.add_task(
         telegram.report_user_modification,
@@ -151,7 +163,7 @@ def modify_user(username: str,
     return user
 
 
-@ app.delete("/api/user/{username}", tags=['User'])
+@app.delete("/api/user/{username}", tags=['User'])
 def remove_user(username: str,
                 bg: BackgroundTasks,
                 db: Session = Depends(get_db),
@@ -168,12 +180,9 @@ def remove_user(username: str,
         raise HTTPException(status_code=403, detail="You're not allowed")
 
     crud.remove_user(db, dbuser)
-    for proxy in dbuser.proxies:
-        for inbound in INBOUNDS.get(proxy.type, []):
-            try:
-                xray.api.remove_inbound_user(tag=inbound['tag'], email=username)
-            except xray.exc.EmailNotFoundError:
-                pass
+
+    xray_remove_user(dbuser)
+
     bg.add_task(
         telegram.report_user_deletion,
         username=dbuser.username,
@@ -183,7 +192,7 @@ def remove_user(username: str,
     return {}
 
 
-@ app.get("/api/users", tags=['User'], response_model=List[UserResponse])
+@app.get("/api/users", tags=['User'], response_model=List[UserResponse])
 def get_users(offset: int = None,
               limit: int = None,
               username: str = None,

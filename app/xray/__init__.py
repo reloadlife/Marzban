@@ -30,14 +30,14 @@ api = XRay(config.api_host, config.api_port)
 # protocol: list_of_inbounds
 # inbound contains tag, port, stream settings
 # stream settings contains net, tls, sni, path
-INBOUNDS: Dict[str, list] = {
-    i['protocol']: []
-    for i in filter(lambda i: i.get('tag') not in XRAY_EXCLUDE_INBOUND_TAGS, config['inbounds'])
-}
+INBOUNDS: Dict[str, list] = {}
 FALLBACK_INBOUND = config.get_inbound(XRAY_FALLBACK_INBOUND_TAG)
 
 
 for inbound in config['inbounds']:
+    if inbound.get('protocol') == "dokodemo-door":
+        continue
+
     settings = {}
 
     try:
@@ -104,7 +104,10 @@ for inbound in config['inbounds']:
         else:
             settings['stream']['path'] = net_settings.get('path', '')
 
-    INBOUNDS[inbound['protocol']].append(settings)
+    try:
+        INBOUNDS[inbound['protocol']].append(settings)
+    except KeyError:
+        INBOUNDS[inbound['protocol']] = [settings]
 
 __all__ = [
     "config",

@@ -1,9 +1,19 @@
 from typing import Union
 
-from app.db.models import JWT, Admin, Proxy, System, User
+from app.db.models import JWT, Admin, Proxy, ProxyInbound, System, User
 from app.models.admin import AdminCreate, AdminModify
 from app.models.user import UserCreate, UserModify, UserStatus
 from sqlalchemy.orm import Session
+
+
+def get_or_create_inbound(db: Session, inbound_tag: str):
+    inbound = db.query(ProxyInbound).filter(ProxyInbound.tag == inbound_tag).first()
+    if not inbound:
+        inbound = ProxyInbound(tag=inbound_tag)
+        db.add(inbound)
+        db.commit()
+        db.refresh(inbound)
+    return inbound
 
 
 def get_user(db: Session, username: str):
@@ -45,7 +55,18 @@ def get_users_count(db: Session, status: UserStatus = None):
 
 
 def create_user(db: Session, user: UserCreate, admin: Admin = None):
-    proxies = [Proxy(type=t.value, settings=s.dict(no_obj=True)) for t, s in user.proxies.items()]
+    excluded_inbounds_tags = user.get_excluded_inbounds()
+    proxies = []
+    for ptype, settings in user.proxies.items():
+        excluded_inbounds = [
+            get_or_create_inbound(db, tag) for tag in excluded_inbounds_tags[ptype]
+        ]
+        proxies.append(
+            Proxy(type=ptype.value,
+                  settings=settings.dict(no_obj=True),
+                  excluded_inbounds=excluded_inbounds)
+        )
+
     dbuser = User(
         username=user.username,
         proxies=proxies,
@@ -66,7 +87,7 @@ def remove_user(db: Session, dbuser: User):
 
 
 def update_user(db: Session, dbuser: User, modify: UserModify):
-    if modify.proxies is not None:
+    if modify.proxies:
         for proxy_type, settings in modify.proxies.items():
             dbproxy = db.query(Proxy) \
                 .where(Proxy.user == dbuser, Proxy.type == proxy_type) \
@@ -78,6 +99,15 @@ def update_user(db: Session, dbuser: User, modify: UserModify):
         for proxy in dbuser.proxies:
             if proxy.type not in modify.proxies:
                 db.delete(proxy)
+
+    if modify.inbounds:
+        excluded_inbounds_tags = modify.get_excluded_inbounds()
+        for proxy_type, tags in excluded_inbounds_tags.items():
+            dbproxy = db.query(Proxy) \
+                .where(Proxy.user == dbuser, Proxy.type == proxy_type) \
+                .first()
+            if dbproxy:
+                dbproxy.excluded_inbounds = [get_or_create_inbound(db, tag) for tag in tags]
 
     if modify.data_limit is not None:
         dbuser.data_limit = (modify.data_limit or None)

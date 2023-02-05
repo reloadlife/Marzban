@@ -1,8 +1,9 @@
+import itertools
 import time
 
 import sqlalchemy
 from app import app, xray
-from app.db import GetDB, User, engine, get_users
+from app.db import GetDB, User, engine, get_or_create_inbound, get_users
 from app.models.user import UserResponse, UserStatus
 
 
@@ -23,10 +24,19 @@ def add_users_from_db():
                     time.sleep(2)
                 tries += 1
 
+            inbounds = {
+                i['tag']: get_or_create_inbound(db, i['tag'])
+                for i in itertools.chain(*xray.INBOUNDS.values())
+            }
+
             for user in get_users(db, status=UserStatus.active):
                 for proxy in user.proxies:
                     account = UserResponse.from_orm(user).get_account(proxy.type)
                     for inbound in xray.INBOUNDS.get(proxy.type, []):
+
+                        if inbounds[inbound['tag']] in proxy.excluded_inbounds:
+                            continue
+
                         try:
                             xray.api.add_inbound_user(tag=inbound['tag'], user=account)
                         except xray.exc.EmailExistsError:
