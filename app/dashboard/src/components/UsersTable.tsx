@@ -296,7 +296,7 @@ const EmptySection: FC<EmptySectionProps> = ({ isFiltered }) => {
           colorScheme="primary"
           onClick={() => onCreateUser(true)}
         >
-          Create user
+          Create User
         </Button>
       )}
     </Box>

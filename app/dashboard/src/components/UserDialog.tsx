@@ -207,7 +207,7 @@ export const UserDialog: FC<UserDialogProps> = () => {
                     />
                   </FormControl>
                   <FormControl>
-                    <FormLabel>Bandwidth Limit</FormLabel>
+                    <FormLabel>Data Limit</FormLabel>
                     <Controller
                       control={form.control}
                       name="data_limit"

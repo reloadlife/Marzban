@@ -1,5 +1,6 @@
 import {
   BoxProps,
+  Button,
   chakra,
   Grid,
   GridItem,
@@ -34,7 +35,8 @@ const ReloadIcon = chakra(ArrowPathIcon, iconProps);
 export type FilterProps = {} & BoxProps;
 
 export const Filters: FC<FilterProps> = ({ ...props }) => {
-  const { loading, filters, onFilterChange, refetchUsers } = useDashboard();
+  const { loading, filters, onFilterChange, refetchUsers, onCreateUser } =
+    useDashboard();
   const onChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     onFilterChange({
       ...filters,
@@ -89,6 +91,7 @@ export const Filters: FC<FilterProps> = ({ ...props }) => {
             disabled={loading}
             onClick={refetchUsers}
             size="sm"
+            variant="outline"
           >
             <ReloadIcon
               className={classNames({
@@ -96,6 +99,14 @@ export const Filters: FC<FilterProps> = ({ ...props }) => {
               })}
             />
           </IconButton>
+          <Button
+            colorScheme="primary"
+            size="sm"
+            onClick={() => onCreateUser(true)}
+            px={5}
+          >
+            Create User
+          </Button>
         </HStack>
       </GridItem>
     </Grid>

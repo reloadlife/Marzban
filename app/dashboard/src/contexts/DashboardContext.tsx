@@ -24,12 +24,14 @@ type DashboardStateType = {
   loading: boolean;
   filters: FilterType;
   qrcodeLinks: string[] | null;
+  isEditingHosts: boolean;
 };
 type DashboardActionsType =
   | { type: "EditingUser"; user: User | null }
   | { type: "DeletingUser"; user: User | null }
   | { type: "CreatingNewUser"; isOpen: boolean }
   | { type: "FilterChange"; filters: FilterType }
+  | { type: "EditingHosts"; isEditingHosts: boolean }
   | { type: "SetQrCode"; links: string[] | null };
 
 type DashboardContextType = {
@@ -42,6 +44,7 @@ type DashboardContextType = {
   createUser: (user: UserCreate) => Promise<void>;
   editUser: (user: UserCreate) => Promise<void>;
   setQRCode: (links: string[] | null) => void;
+  onEditingHosts: (isEditingHosts: boolean) => void;
 } & DashboardStateType;
 
 const dashboardContextInitialValue: DashboardContextType = {
@@ -52,6 +55,7 @@ const dashboardContextInitialValue: DashboardContextType = {
   users: [],
   filteredUsers: [],
   loading: true,
+  isEditingHosts: false,
   filters: { search: "" },
   onCreateUser: () => {},
   onEditingUser: (user) => {},
@@ -68,6 +72,7 @@ const dashboardContextInitialValue: DashboardContextType = {
   editUser: (user) => {
     return new Promise(() => {});
   },
+  onEditingHosts: () => {},
 };
 
 export const DashboardContext = React.createContext<DashboardContextType>(
@@ -93,6 +98,8 @@ const dashboardReducer: Reducer<DashboardStateType, DashboardActionsType> = (
       return { ...state, filters: action.filters };
     case "SetQrCode":
       return { ...state, qrcodeLinks: action.links };
+    case "EditingHosts":
+      return { ...state, isEditingHosts: action.isEditingHosts };
     default:
       return state;
   }
@@ -172,6 +179,13 @@ export const DashboardProvider: FC<DashboardProviderProps> = ({ children }) => {
     });
   }, []);
 
+  const onEditingHosts = useCallback((isEditingHosts: boolean) => {
+    dispatch({
+      type: "EditingHosts",
+      isEditingHosts,
+    });
+  }, []);
+
   const filteredUsers = useMemo(() => {
     if (!users) return [];
     return users.filter(
@@ -193,6 +207,7 @@ export const DashboardProvider: FC<DashboardProviderProps> = ({ children }) => {
     createUser,
     editUser,
     setQRCode,
+    onEditingHosts,
   };
 
   return (
