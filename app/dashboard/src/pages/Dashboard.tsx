@@ -22,8 +22,8 @@ export const Dashboard: FC = () => {
       <Box w="full">
         <Header />
         <Statistics mt="4" />
-        <Filters mt="4" />
-        <UsersTable mt="4" />
+        <Filters />
+        <UsersTable />
         <UserDialog />
         <DeleteUserModal />
         <QRCodeDialog />
