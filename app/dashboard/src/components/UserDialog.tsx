@@ -58,7 +58,15 @@ const schema = z.object({
   proxies: z.array(z.string()).refine((value) => value.length > 0, {
     message: "Please select at least one protocol",
   }),
-  data_limit: z.number().min(0, "The minimum number is 0").nullable(),
+  data_limit: z
+    .string()
+    .min(0, "The minimum number is 0")
+    .or(z.number())
+    .nullable()
+    .transform((str) => {
+      if (str) return parseFloat(String(str));
+      return str;
+    }),
   expire: z.number().nullable(),
 });
 
@@ -69,6 +77,9 @@ export type FormType = Omit<UserCreate, "proxies"> & { proxies: ProxyKeys };
 const formatUser = (user: User): FormType => {
   return {
     ...user,
+    data_limit: user.data_limit
+      ? Number((user.data_limit / 1073741824).toFixed(6))
+      : user.data_limit,
     proxies: Object.keys(user.proxies) as ProxyKeys,
   };
 };
@@ -129,6 +140,9 @@ export const UserDialog: FC<UserDialogProps> = () => {
     setError(null);
     let body: UserCreate = {
       ...values,
+      data_limit: values.data_limit
+        ? values.data_limit * 1073741824
+        : values.data_limit,
       proxies: mergeProxies(values.proxies, editingUser?.proxies),
     };
     methods[method](body)
@@ -164,7 +178,6 @@ export const UserDialog: FC<UserDialogProps> = () => {
 
   useEffect(() => {
     if (editingUser) {
-      console.log(formatUser(editingUser));
       form.reset(formatUser(editingUser));
     }
   }, [editingUser]);
@@ -218,24 +231,43 @@ export const UserDialog: FC<UserDialogProps> = () => {
                             type="number"
                             size="sm"
                             borderRadius="6px"
-                            onChange={(value) => {
-                              field.onChange(
-                                value && value.length
-                                  ? Number(
-                                      (parseFloat(value) * 1073741824).toFixed(
-                                        3
-                                      )
-                                    )
-                                  : 0
-                              );
+                            step="any"
+                            onChange={(e) => {
+                              const value = e.target?.value || e || "";
+                              if (value) {
+                                const decimalPart = String(value).split(".");
+                                if (
+                                  (decimalPart.length > 1 &&
+                                    decimalPart[1].length > 6) ||
+                                  decimalPart[0].length > 6
+                                ) {
+                                  if (
+                                    decimalPart.length > 1 &&
+                                    decimalPart[1].length > 6
+                                  ) {
+                                    decimalPart[1] = decimalPart[1].substring(
+                                      0,
+                                      6
+                                    );
+                                  }
+                                  if (decimalPart[0].length > 6)
+                                    decimalPart[0] = decimalPart[0].substring(
+                                      0,
+                                      6
+                                    );
+                                  if (decimalPart[1])
+                                    field.onChange(
+                                      decimalPart[0] +
+                                        "." +
+                                        decimalPart[1].substring(0, 6)
+                                    );
+                                  else field.onChange(decimalPart[0]);
+                                } else field.onChange(value);
+                              }
                             }}
                             disabled={disabled}
                             error={form.formState.errors.data_limit?.message}
-                            value={
-                              field.value
-                                ? String(field.value / 1073741824)
-                                : undefined
-                            }
+                            value={String(field.value)}
                           />
                         );
                       }}

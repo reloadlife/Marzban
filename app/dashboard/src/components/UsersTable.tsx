@@ -9,6 +9,7 @@ import {
   SliderProps,
   SliderTrack,
   Table,
+  TableContainer,
   TableProps,
   Tbody,
   Td,
@@ -17,6 +18,7 @@ import {
   Thead,
   Tooltip,
   Tr,
+  useBreakpointValue,
 } from "@chakra-ui/react";
 import {
   CheckIcon,
@@ -24,7 +26,7 @@ import {
   LinkIcon,
   QrCodeIcon,
 } from "@heroicons/react/24/outline";
-import { FC, useEffect, useState } from "react";
+import { FC, useCallback, useEffect, useState } from "react";
 import { ReactComponent as AddFileIcon } from "assets/add_file.svg";
 import { formatBytes } from "utils/formatByte";
 import { useDashboard } from "contexts/DashboardContext";
@@ -93,6 +95,13 @@ export const UsersTable: FC<UsersTableProps> = (props) => {
     onEditingUser,
     setQRCode,
   } = useDashboard();
+
+  const marginTop =
+    useBreakpointValue({
+      base: 120,
+      lg: 72,
+    }) || 72;
+
   const isFiltered = users.length !== totalUsers.length;
   const [copied, setCopied] = useState([-1, -1, false]);
 
@@ -103,14 +112,35 @@ export const UsersTable: FC<UsersTableProps> = (props) => {
       }, 1000);
     }
   }, [copied]);
+
+  const tableFixHead = useCallback(() => {
+    const el = document.querySelectorAll("#users-table")[0] as HTMLElement;
+    const sT = window.scrollY;
+
+    document.querySelectorAll("#users-table thead th").forEach((th: any) => {
+      const transformY =
+        el.offsetTop - marginTop <= sT ? sT - el.offsetTop + marginTop : 0;
+      th.style.transform = `translateY(${transformY}px)`;
+    });
+  }, [marginTop, users]);
+
+  useEffect(() => {
+    window.addEventListener("scroll", tableFixHead);
+    window.addEventListener("resize", tableFixHead);
+    return () => {
+      window.removeEventListener("scroll", tableFixHead);
+      window.removeEventListener("resize", tableFixHead);
+    };
+  }, [tableFixHead]);
+
   return (
-    <Box overflowX="auto" maxW="100vw">
+    <Box id="users-table" overflowX="auto" maxW="100vw">
       <Table {...props}>
-        <Thead>
+        <Thead zIndex="docked" position="relative">
           <Tr>
             <Th>Username</Th>
             <Th>status</Th>
-            <Th>banding usage</Th>
+            <Th>data usage</Th>
             <Th></Th>
           </Tr>
         </Thead>
@@ -124,10 +154,10 @@ export const UsersTable: FC<UsersTableProps> = (props) => {
                 onClick={() => onEditingUser(user)}
               >
                 <Td minW="150px">{user.username}</Td>
-                <Td width="350px">
+                <Td width="400px" minW="280px">
                   <UserBadge expiryDate={user.expire} status={user.status} />
                 </Td>
-                <Td width="300px" minW="200px">
+                <Td width="350px" minW="230px">
                   <UsageSlider
                     used={user.used_traffic}
                     total={user.data_limit}
